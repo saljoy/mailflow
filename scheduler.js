@@ -17,9 +17,10 @@ async function getAuthForAccount(account) {
 
   if (Date.now() > account.token_expiry) {
     const { credentials } = await accountClient.refreshAccessToken();
-    db.prepare(`
-      UPDATE accounts SET access_token = ?, token_expiry = ? WHERE id = ?
-    `).run(credentials.access_token, credentials.expiry_date, account.id);
+    await db.query(
+      `UPDATE accounts SET access_token = $1, token_expiry = $2 WHERE id = $3`,
+      [credentials.access_token, credentials.expiry_date, account.id]
+    );
     accountClient.setCredentials(credentials);
   }
 
@@ -86,11 +87,12 @@ function pickContent(campaign) {
 
 async function processSendQueue() {
   try {
-    const runningCampaigns = db.prepare("SELECT * FROM campaigns WHERE status = 'running'").all();
+    const campaignResult = await db.query("SELECT * FROM campaigns WHERE status = 'running'");
+    const runningCampaigns = campaignResult.rows;
     if (runningCampaigns.length === 0) return;
 
     for (const campaign of runningCampaigns) {
-      const queueItem = db.prepare(`
+      const queueResult = await db.query(`
         SELECT q.*, 
           a.email as account_email, 
           a.display_name as account_display_name,
@@ -100,21 +102,25 @@ async function processSendQueue() {
           a.id as acc_id
         FROM queue q
         JOIN accounts a ON q.account_id = a.id
-        WHERE q.campaign_id = ? 
+        WHERE q.campaign_id = $1 
           AND q.status = 'pending' 
           AND a.status = 'active'
         ORDER BY q.id ASC
         LIMIT 1
-      `).get(campaign.id);
+      `, [campaign.id]);
+      
+      const queueItem = queueResult.rows[0];
 
       if (!queueItem) {
-        const remaining = db.prepare(`
+        const remainingResult = await db.query(`
           SELECT COUNT(*) as count FROM queue 
-          WHERE campaign_id = ? AND status = 'pending'
-        `).get(campaign.id);
+          WHERE campaign_id = $1 AND status = 'pending'
+        `, [campaign.id]);
+        
+        const remaining = remainingResult.rows[0];
 
-        if (remaining.count === 0) {
-          db.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(campaign.id);
+        if (remaining.count === '0' || remaining.count === 0) {
+          await db.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [campaign.id]);
           console.log(`Campaign "${campaign.name}" completed!`);
         } else {
           console.log(`Campaign "${campaign.name}" has ${remaining.count} pending but no active accounts`);
@@ -151,24 +157,24 @@ async function processSendQueue() {
           requestBody: { raw }
         });
 
-        db.prepare("UPDATE queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?").run(queueItem.id);
-        db.prepare("UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = ?").run(campaign.id);
-        db.prepare("UPDATE accounts SET daily_sent = daily_sent + 1 WHERE id = ?").run(queueItem.acc_id);
-        db.prepare(`
+        await db.query("UPDATE queue SET status = 'sent', sent_at = NOW() WHERE id = $1", [queueItem.id]);
+        await db.query("UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = $1", [campaign.id]);
+        await db.query("UPDATE accounts SET daily_sent = daily_sent + 1 WHERE id = $1", [queueItem.acc_id]);
+        await db.query(`
           INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-          VALUES (?, ?, ?, 'sent', 'Email sent successfully')
-        `).run(campaign.id, queueItem.acc_id, queueItem.recipient_email);
+          VALUES ($1, $2, $3, 'sent', 'Email sent successfully')
+        `, [campaign.id, queueItem.acc_id, queueItem.recipient_email]);
 
         console.log(`Successfully sent to ${queueItem.recipient_email}`);
 
       } catch (err) {
         console.error(`Failed to send to ${queueItem.recipient_email}:`, err.message);
-        db.prepare("UPDATE queue SET status = 'failed', error = ? WHERE id = ?").run(err.message, queueItem.id);
-        db.prepare("UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = ?").run(campaign.id);
-        db.prepare(`
+        await db.query("UPDATE queue SET status = 'failed', error = $1 WHERE id = $2", [err.message, queueItem.id]);
+        await db.query("UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = $1", [campaign.id]);
+        await db.query(`
           INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-          VALUES (?, ?, ?, 'failed', ?)
-        `).run(campaign.id, queueItem.acc_id, queueItem.recipient_email, err.message);
+          VALUES ($1, $2, $3, 'failed', $4)
+        `, [campaign.id, queueItem.acc_id, queueItem.recipient_email, err.message]);
       }
     }
   } catch (err) {
@@ -177,8 +183,8 @@ async function processSendQueue() {
 }
 
 // Reset daily counts at midnight
-cron.schedule('0 0 * * *', () => {
-  db.prepare("UPDATE accounts SET daily_sent = 0, last_reset = datetime('now')").run();
+cron.schedule('0 0 * * *', async () => {
+  await db.query("UPDATE accounts SET daily_sent = 0, last_reset = NOW()");
   console.log('Daily sent counts reset');
 });
 
