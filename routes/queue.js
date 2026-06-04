@@ -3,9 +3,9 @@ const router = express.Router();
 const db = require('../db');
 
 // Get live queue (sending now + upcoming)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const queue = db.prepare(`
+    const result = await db.query(`
       SELECT 
         q.id,
         q.recipient_email,
@@ -19,38 +19,38 @@ router.get('/', (req, res) => {
       LEFT JOIN campaigns c ON q.campaign_id = c.id
       ORDER BY q.id DESC
       LIMIT 100
-    `).all();
-    res.json(queue);
+    `);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Get queue stats
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const total = db.prepare('SELECT COUNT(*) as count FROM queue').get();
-    const pending = db.prepare("SELECT COUNT(*) as count FROM queue WHERE status = 'pending'").get();
-    const sent = db.prepare("SELECT COUNT(*) as count FROM queue WHERE status = 'sent'").get();
-    const failed = db.prepare("SELECT COUNT(*) as count FROM queue WHERE status = 'failed'").get();
+    const totalResult = await db.query('SELECT COUNT(*) as count FROM queue');
+    const pendingResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'pending'");
+    const sentResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'sent'");
+    const failedResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'failed'");
 
-    const campaigns = db.prepare("SELECT COUNT(*) as count FROM campaigns WHERE status = 'running'").get();
-    const accounts = db.prepare("SELECT COUNT(*) as count FROM accounts WHERE status = 'active'").get();
+    const campaignsResult = await db.query("SELECT COUNT(*) as count FROM campaigns WHERE status = 'running'");
+    const accountsResult = await db.query("SELECT COUNT(*) as count FROM accounts WHERE status = 'active'");
 
-    const todaySent = db.prepare(`
+    const todaySentResult = await db.query(`
       SELECT COUNT(*) as count FROM queue 
       WHERE status = 'sent' 
-      AND date(sent_at) = date('now')
-    `).get();
+      AND DATE(sent_at) = CURRENT_DATE
+    `);
 
     res.json({
-      total: total.count,
-      pending: pending.count,
-      sent: sent.count,
-      failed: failed.count,
-      today_sent: todaySent.count,
-      active_campaigns: campaigns.count,
-      active_accounts: accounts.count
+      total: parseInt(totalResult.rows[0].count),
+      pending: parseInt(pendingResult.rows[0].count),
+      sent: parseInt(sentResult.rows[0].count),
+      failed: parseInt(failedResult.rows[0].count),
+      today_sent: parseInt(todaySentResult.rows[0].count),
+      active_campaigns: parseInt(campaignsResult.rows[0].count),
+      active_accounts: parseInt(accountsResult.rows[0].count)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -58,9 +58,9 @@ router.get('/stats', (req, res) => {
 });
 
 // Get logs
-router.get('/logs', (req, res) => {
+router.get('/logs', async (req, res) => {
   try {
-    const logs = db.prepare(`
+    const result = await db.query(`
       SELECT 
         l.*,
         a.email as account_email,
@@ -70,8 +70,8 @@ router.get('/logs', (req, res) => {
       LEFT JOIN campaigns c ON l.campaign_id = c.id
       ORDER BY l.created_at DESC
       LIMIT 200
-    `).all();
-    res.json(logs);
+    `);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
