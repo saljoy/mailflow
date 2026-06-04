@@ -23,8 +23,12 @@ router.get('/', (req, res) => {
 router.get('/auth', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/gmail.send']
+    prompt: 'consent select_account',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/userinfo.email'
+    ]
   });
   res.json({ url });
 });
