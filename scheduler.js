@@ -8,28 +8,30 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-// Refreshes a Gmail account token if expired
 async function getAuthForAccount(account) {
-  oauth2Client.setCredentials({
+  const accountClient = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+
+  accountClient.setCredentials({
     access_token: account.access_token,
     refresh_token: account.refresh_token,
     expiry_date: account.token_expiry
   });
 
   if (Date.now() > account.token_expiry) {
-    const { credentials } = await oauth2Client.refreshAccessToken();
+    const { credentials } = await accountClient.refreshAccessToken();
     db.prepare(`
-      UPDATE accounts 
-      SET access_token = ?, token_expiry = ? 
-      WHERE id = ?
+      UPDATE accounts SET access_token = ?, token_expiry = ? WHERE id = ?
     `).run(credentials.access_token, credentials.expiry_date, account.id);
-    oauth2Client.setCredentials(credentials);
+    accountClient.setCredentials(credentials);
   }
 
-  return oauth2Client;
+  return accountClient;
 }
 
-// Converts email content to base64 format Gmail API needs
 function makeEmail(to, subject, bodyHtml, bodyPlain) {
   const boundary = 'mailflow_boundary';
   const message = [
@@ -58,135 +60,88 @@ function makeEmail(to, subject, bodyHtml, bodyPlain) {
     .replace(/=+$/, '');
 }
 
-// Checks if current time is within campaign sending window
-function isWithinSendingWindow(startTime, endTime) {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMin = now.getMinutes();
-  const current = currentHour * 60 + currentMin;
+async function processSendQueue() {
+  try {
+    const runningCampaigns = db.prepare("SELECT * FROM campaigns WHERE status = 'running'").all();
+    if (runningCampaigns.length === 0) return;
 
-  const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
+    for (const campaign of runningCampaigns) {
+      const queueItem = db.prepare(`
+        SELECT q.*, a.email as account_email, a.access_token, a.refresh_token, a.token_expiry, a.id as acc_id
+        FROM queue q
+        JOIN accounts a ON q.account_id = a.id
+        WHERE q.campaign_id = ? AND q.status = 'pending' AND a.status = 'active'
+        ORDER BY q.id ASC
+        LIMIT 1
+      `).get(campaign.id);
 
-  return current >= start && current <= end;
-}
+      if (!queueItem) {
+        const remaining = db.prepare("SELECT COUNT(*) as count FROM queue WHERE campaign_id = ? AND status = 'pending'").get(campaign.id);
+        if (remaining.count === 0) {
+          db.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(campaign.id);
+          console.log(`Campaign ${campaign.name} completed!`);
+        }
+        continue;
+      }
 
-// Sends one email from the queue
-async function sendNextEmail() {
-  const runningCampaigns = db.prepare(`
-    SELECT * FROM campaigns WHERE status = 'running'
-  `).all();
+      try {
+        console.log(`Sending to ${queueItem.recipient_email} via ${queueItem.account_email}...`);
 
-  if (runningCampaigns.length === 0) return;
+        const auth = await getAuthForAccount({
+          id: queueItem.acc_id,
+          access_token: queueItem.access_token,
+          refresh_token: queueItem.refresh_token,
+          token_expiry: queueItem.token_expiry
+        });
 
-  for (const campaign of runningCampaigns) {
-    if (!isWithinSendingWindow(campaign.start_time, campaign.end_time)) continue;
+        const gmail = google.gmail({ version: 'v1', auth });
+        const raw = makeEmail(
+          queueItem.recipient_email,
+          campaign.subject,
+          campaign.body_html,
+          campaign.body_plain
+        );
 
-    // Get next pending email in queue for this campaign
-    const queueItem = db.prepare(`
-      SELECT q.*, a.email as account_email, a.access_token, a.refresh_token, a.token_expiry
-      FROM queue q
-      JOIN accounts a ON q.account_id = a.id
-      WHERE q.campaign_id = ? AND q.status = 'pending'
-      ORDER BY q.id ASC
-      LIMIT 1
-    `).get(campaign.id);
+        await gmail.users.messages.send({
+          userId: 'me',
+          requestBody: { raw }
+        });
 
-    if (!queueItem) {
-      // No more pending — mark campaign complete
-      db.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(campaign.id);
-      continue;
+        db.prepare("UPDATE queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?").run(queueItem.id);
+        db.prepare("UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = ?").run(campaign.id);
+        db.prepare("UPDATE accounts SET daily_sent = daily_sent + 1 WHERE id = ?").run(queueItem.acc_id);
+        db.prepare(`
+          INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
+          VALUES (?, ?, ?, 'sent', 'Email sent successfully')
+        `).run(campaign.id, queueItem.acc_id, queueItem.recipient_email);
+
+        console.log(`Successfully sent to ${queueItem.recipient_email}`);
+
+      } catch (err) {
+        console.error(`Failed to send to ${queueItem.recipient_email}:`, err.message);
+        db.prepare("UPDATE queue SET status = 'failed', error = ? WHERE id = ?").run(err.message, queueItem.id);
+        db.prepare("UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = ?").run(campaign.id);
+        db.prepare(`
+          INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
+          VALUES (?, ?, ?, 'failed', ?)
+        `).run(campaign.id, queueItem.acc_id, queueItem.recipient_email, err.message);
+      }
     }
-
-    try {
-      const auth = await getAuthForAccount({
-        id: queueItem.account_id,
-        access_token: queueItem.access_token,
-        refresh_token: queueItem.refresh_token,
-        token_expiry: queueItem.token_expiry
-      });
-
-      const gmail = google.gmail({ version: 'v1', auth });
-
-      const raw = makeEmail(
-        queueItem.recipient_email,
-        campaign.subject,
-        campaign.body_html,
-        campaign.body_plain
-      );
-
-      await gmail.users.messages.send({
-        userId: 'me',
-        requestBody: { raw }
-      });
-
-      // Mark as sent
-      db.prepare(`
-        UPDATE queue SET status = 'sent', sent_at = datetime('now') WHERE id = ?
-      `).run(queueItem.id);
-
-      // Update campaign sent count
-      db.prepare(`
-        UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = ?
-      `).run(campaign.id);
-
-      // Update account daily sent count
-      db.prepare(`
-        UPDATE accounts SET daily_sent = daily_sent + 1 WHERE id = ?
-      `).run(queueItem.account_id);
-
-      // Log success
-      db.prepare(`
-        INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-        VALUES (?, ?, ?, 'sent', 'Email sent successfully')
-      `).run(campaign.id, queueItem.account_id, queueItem.recipient_email);
-
-    } catch (err) {
-      // Mark as failed
-      db.prepare(`
-        UPDATE queue SET status = 'failed', error = ? WHERE id = ?
-      `).run(err.message, queueItem.id);
-
-      // Update campaign failed count
-      db.prepare(`
-        UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = ?
-      `).run(campaign.id);
-
-      // Log failure
-      db.prepare(`
-        INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-        VALUES (?, ?, ?, 'failed', ?)
-      `).run(campaign.id, queueItem.account_id, queueItem.recipient_email, err.message);
-    }
+  } catch (err) {
+    console.error('Scheduler error:', err.message);
   }
 }
 
-// Resets daily sent counts for all accounts at midnight
+// Reset daily counts at midnight
 cron.schedule('0 0 * * *', () => {
-  db.prepare(`UPDATE accounts SET daily_sent = 0, last_reset = datetime('now')`).run();
+  db.prepare("UPDATE accounts SET daily_sent = 0, last_reset = datetime('now')").run();
   console.log('Daily sent counts reset');
 });
 
-// Main sending loop — runs every 10 seconds and checks delay per campaign
-let lastSent = {};
-
-cron.schedule('*/10 * * * * *', async () => {
-  const runningCampaigns = db.prepare(`
-    SELECT * FROM campaigns WHERE status = 'running'
-  `).all();
-
-  for (const campaign of runningCampaigns) {
-    const now = Date.now();
-    const last = lastSent[campaign.id] || 0;
-    const delayMs = campaign.delay_seconds * 1000;
-
-    if (now - last >= delayMs) {
-      lastSent[campaign.id] = now;
-      await sendNextEmail(campaign);
-    }
-  }
+// Run every 30 seconds
+cron.schedule('*/30 * * * * *', async () => {
+  console.log('Scheduler tick — checking queue...');
+  await processSendQueue();
 });
 
-console.log('Scheduler started');
+console.log('Scheduler started — running every 30 seconds');
