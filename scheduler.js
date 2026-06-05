@@ -18,7 +18,7 @@ async function getAuthForAccount(account) {
   if (Date.now() > account.token_expiry) {
     const { credentials } = await accountClient.refreshAccessToken();
     await db.query(
-      `UPDATE accounts SET access_token = $1, token_expiry = $2 WHERE id = $3`,
+      'UPDATE accounts SET access_token = $1, token_expiry = $2 WHERE id = $3',
       [credentials.access_token, credentials.expiry_date, account.id]
     );
     accountClient.setCredentials(credentials);
@@ -29,9 +29,7 @@ async function getAuthForAccount(account) {
 
 function makeEmail(to, fromName, fromEmail, subject, bodyHtml, bodyPlain) {
   const boundary = 'mailflow_boundary';
-  const fromField = fromName
-    ? `${fromName} <${fromEmail}>`
-    : fromEmail;
+  const fromField = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
   const message = [
     `To: ${to}`,
@@ -61,37 +59,24 @@ function makeEmail(to, fromName, fromEmail, subject, bodyHtml, bodyPlain) {
 }
 
 function pickContent(campaign) {
-  // Try to use content variations if available
   if (campaign.content_variations) {
     try {
       const variations = JSON.parse(campaign.content_variations);
       if (variations && variations.length > 0) {
-        // Pick random variation
         const pick = variations[Math.floor(Math.random() * variations.length)];
-        return {
-          subject: pick.subject,
-          body_html: pick.body_html,
-          body_plain: pick.body_plain
-        };
+        return { subject: pick.subject, body_html: pick.body_html, body_plain: pick.body_plain };
       }
     } catch (e) {}
   }
-
-  // Fall back to main campaign content
-  return {
-    subject: campaign.subject,
-    body_html: campaign.body_html,
-    body_plain: campaign.body_plain
-  };
+  return { subject: campaign.subject, body_html: campaign.body_html, body_plain: campaign.body_plain };
 }
 
 async function processSendQueue() {
   try {
-    const campaignResult = await db.query("SELECT * FROM campaigns WHERE status = 'running'");
-    const runningCampaigns = campaignResult.rows;
-    if (runningCampaigns.length === 0) return;
+    const runningCampaigns = await db.query("SELECT * FROM campaigns WHERE status = 'running'");
+    if (runningCampaigns.rows.length === 0) return;
 
-    for (const campaign of runningCampaigns) {
+    for (const campaign of runningCampaigns.rows) {
       const queueResult = await db.query(`
         SELECT q.*, 
           a.email as account_email, 
@@ -108,30 +93,24 @@ async function processSendQueue() {
         ORDER BY q.id ASC
         LIMIT 1
       `, [campaign.id]);
-      
+
       const queueItem = queueResult.rows[0];
 
       if (!queueItem) {
-        const remainingResult = await db.query(`
-          SELECT COUNT(*) as count FROM queue 
-          WHERE campaign_id = $1 AND status = 'pending'
-        `, [campaign.id]);
-        
-        const remaining = remainingResult.rows[0];
+        const remaining = await db.query(
+          "SELECT COUNT(*) as count FROM queue WHERE campaign_id = $1 AND status = 'pending'",
+          [campaign.id]
+        );
 
-        if (remaining.count === '0' || remaining.count === 0) {
+        if (parseInt(remaining.rows[0].count) === 0) {
           await db.query("UPDATE campaigns SET status = 'completed' WHERE id = $1", [campaign.id]);
           console.log(`Campaign "${campaign.name}" completed!`);
-        } else {
-          console.log(`Campaign "${campaign.name}" has ${remaining.count} pending but no active accounts`);
         }
         continue;
       }
 
       try {
-        // Pick random content variation
         const content = pickContent(campaign);
-
         console.log(`Sending to ${queueItem.recipient_email} via ${queueItem.account_email}...`);
 
         const auth = await getAuthForAccount({
@@ -152,18 +131,15 @@ async function processSendQueue() {
           content.body_plain
         );
 
-        await gmail.users.messages.send({
-          userId: 'me',
-          requestBody: { raw }
-        });
+        await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
 
         await db.query("UPDATE queue SET status = 'sent', sent_at = NOW() WHERE id = $1", [queueItem.id]);
         await db.query("UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = $1", [campaign.id]);
         await db.query("UPDATE accounts SET daily_sent = daily_sent + 1 WHERE id = $1", [queueItem.acc_id]);
-        await db.query(`
-          INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-          VALUES ($1, $2, $3, 'sent', 'Email sent successfully')
-        `, [campaign.id, queueItem.acc_id, queueItem.recipient_email]);
+        await db.query(
+          `INSERT INTO logs (campaign_id, account_id, recipient_email, status, message) VALUES ($1, $2, $3, 'sent', 'Email sent successfully')`,
+          [campaign.id, queueItem.acc_id, queueItem.recipient_email]
+        );
 
         console.log(`Successfully sent to ${queueItem.recipient_email}`);
 
@@ -171,10 +147,10 @@ async function processSendQueue() {
         console.error(`Failed to send to ${queueItem.recipient_email}:`, err.message);
         await db.query("UPDATE queue SET status = 'failed', error = $1 WHERE id = $2", [err.message, queueItem.id]);
         await db.query("UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = $1", [campaign.id]);
-        await db.query(`
-          INSERT INTO logs (campaign_id, account_id, recipient_email, status, message)
-          VALUES ($1, $2, $3, 'failed', $4)
-        `, [campaign.id, queueItem.acc_id, queueItem.recipient_email, err.message]);
+        await db.query(
+          `INSERT INTO logs (campaign_id, account_id, recipient_email, status, message) VALUES ($1, $2, $3, 'failed', $4)`,
+          [campaign.id, queueItem.acc_id, queueItem.recipient_email, err.message]
+        );
       }
     }
   } catch (err) {

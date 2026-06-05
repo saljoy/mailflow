@@ -2,16 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// Get live queue (sending now + upcoming)
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
       SELECT 
-        q.id,
-        q.recipient_email,
-        q.status,
-        q.sent_at,
-        q.error,
+        q.id, q.recipient_email, q.status, q.sent_at, q.error,
         a.email as account_email,
         c.name as campaign_name
       FROM queue q
@@ -26,38 +21,33 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get queue stats
 router.get('/stats', async (req, res) => {
   try {
-    const totalResult = await db.query('SELECT COUNT(*) as count FROM queue');
-    const pendingResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'pending'");
-    const sentResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'sent'");
-    const failedResult = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'failed'");
-
-    const campaignsResult = await db.query("SELECT COUNT(*) as count FROM campaigns WHERE status = 'running'");
-    const accountsResult = await db.query("SELECT COUNT(*) as count FROM accounts WHERE status = 'active'");
-
-    const todaySentResult = await db.query(`
+    const total = await db.query('SELECT COUNT(*) as count FROM queue');
+    const pending = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'pending'");
+    const sent = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'sent'");
+    const failed = await db.query("SELECT COUNT(*) as count FROM queue WHERE status = 'failed'");
+    const campaigns = await db.query("SELECT COUNT(*) as count FROM campaigns WHERE status = 'running'");
+    const accounts = await db.query("SELECT COUNT(*) as count FROM accounts WHERE status = 'active'");
+    const todaySent = await db.query(`
       SELECT COUNT(*) as count FROM queue 
-      WHERE status = 'sent' 
-      AND DATE(sent_at) = CURRENT_DATE
+      WHERE status = 'sent' AND DATE(sent_at) = CURRENT_DATE
     `);
 
     res.json({
-      total: parseInt(totalResult.rows[0].count),
-      pending: parseInt(pendingResult.rows[0].count),
-      sent: parseInt(sentResult.rows[0].count),
-      failed: parseInt(failedResult.rows[0].count),
-      today_sent: parseInt(todaySentResult.rows[0].count),
-      active_campaigns: parseInt(campaignsResult.rows[0].count),
-      active_accounts: parseInt(accountsResult.rows[0].count)
+      total: total.rows[0].count,
+      pending: pending.rows[0].count,
+      sent: sent.rows[0].count,
+      failed: failed.rows[0].count,
+      today_sent: todaySent.rows[0].count,
+      active_campaigns: campaigns.rows[0].count,
+      active_accounts: accounts.rows[0].count
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get logs
 router.get('/logs', async (req, res) => {
   try {
     const result = await db.query(`

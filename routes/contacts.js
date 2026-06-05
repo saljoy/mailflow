@@ -4,39 +4,36 @@ const db = require('../db');
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
-const path = require('path');
 
 const upload = multer({ dest: 'uploads/' });
 
-// Get all contact lists
-router.get('/lists', (req, res) => {
+router.get('/lists', async (req, res) => {
   try {
-    const lists = db.prepare(`
+    const result = await db.query(`
       SELECT list_name, COUNT(*) as count, MAX(created_at) as created_at
       FROM contacts
       GROUP BY list_name
-      ORDER BY created_at DESC
-    `).all();
-    res.json(lists);
+      ORDER BY MAX(created_at) DESC
+    `);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get contacts in a list
-router.get('/lists/:name', (req, res) => {
+router.get('/lists/:name', async (req, res) => {
   try {
-    const contacts = db.prepare(
-      'SELECT * FROM contacts WHERE list_name = ? ORDER BY created_at DESC'
-    ).all(req.params.name);
-    res.json(contacts);
+    const result = await db.query(
+      'SELECT * FROM contacts WHERE list_name = $1 ORDER BY created_at DESC',
+      [req.params.name]
+    );
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Add contacts manually (paste)
-router.post('/manual', (req, res) => {
+router.post('/manual', async (req, res) => {
   try {
     const { list_name, emails } = req.body;
 
@@ -44,18 +41,15 @@ router.post('/manual', (req, res) => {
       return res.status(400).json({ error: 'List name and emails are required' });
     }
 
-    const insert = db.prepare(
-      'INSERT OR IGNORE INTO contacts (list_name, email) VALUES (?, ?)'
-    );
-
-    const insertMany = db.transaction(() => {
-      emails.forEach(email => {
-        const clean = email.trim().toLowerCase();
-        if (clean) insert.run(list_name, clean);
-      });
-    });
-
-    insertMany();
+    for (const email of emails) {
+      const clean = email.trim().toLowerCase();
+      if (clean) {
+        await db.query(
+          'INSERT INTO contacts (list_name, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [list_name, clean]
+        );
+      }
+    }
 
     res.json({ success: true, added: emails.length });
   } catch (err) {
@@ -63,7 +57,6 @@ router.post('/manual', (req, res) => {
   }
 });
 
-// Upload CSV file
 router.post('/upload', upload.single('file'), (req, res) => {
   try {
     const { list_name } = req.body;
@@ -80,18 +73,14 @@ router.post('/upload', upload.single('file'), (req, res) => {
           emails.push(email.trim().toLowerCase());
         }
       })
-      .on('end', () => {
-        const insert = db.prepare(
-          'INSERT OR IGNORE INTO contacts (list_name, email) VALUES (?, ?)'
-        );
-
-        const insertMany = db.transaction(() => {
-          emails.forEach(email => insert.run(list_name, email));
-        });
-
-        insertMany();
+      .on('end', async () => {
+        for (const email of emails) {
+          await db.query(
+            'INSERT INTO contacts (list_name, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [list_name, email]
+          );
+        }
         fs.unlinkSync(filePath);
-
         res.json({ success: true, added: emails.length });
       })
       .on('error', (err) => {
@@ -102,10 +91,9 @@ router.post('/upload', upload.single('file'), (req, res) => {
   }
 });
 
-// Delete a contact list
-router.delete('/lists/:name', (req, res) => {
+router.delete('/lists/:name', async (req, res) => {
   try {
-    db.prepare('DELETE FROM contacts WHERE list_name = ?').run(req.params.name);
+    await db.query('DELETE FROM contacts WHERE list_name = $1', [req.params.name]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
