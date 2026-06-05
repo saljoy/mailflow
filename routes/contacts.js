@@ -62,7 +62,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
     const { list_name } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const emails = [];
+    const contacts = [];
     const filePath = req.file.path;
 
     fs.createReadStream(filePath)
@@ -70,18 +70,28 @@ router.post('/upload', upload.single('file'), (req, res) => {
       .on('data', (row) => {
         const email = row.email || row.Email || row.EMAIL;
         if (email && email.trim()) {
-          emails.push(email.trim().toLowerCase());
+          contacts.push({
+            email: email.trim().toLowerCase(),
+            first_name: row.first_name || row.FirstName || row['First Name'] || '',
+            last_name: row.last_name || row.LastName || row['Last Name'] || '',
+            company: row.company || row.Company || '',
+            website: row.website || row.Website || '',
+            custom1: row.custom1 || row.Custom1 || '',
+            custom2: row.custom2 || row.Custom2 || '',
+          });
         }
       })
       .on('end', async () => {
-        for (const email of emails) {
+        for (const contact of contacts) {
           await db.query(
-            'INSERT INTO contacts (list_name, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [list_name, email]
+            `INSERT INTO contacts (list_name, email, first_name, last_name, company, website, custom1, custom2) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+            [list_name, contact.email, contact.first_name, contact.last_name,
+             contact.company, contact.website, contact.custom1, contact.custom2]
           );
         }
         fs.unlinkSync(filePath);
-        res.json({ success: true, added: emails.length });
+        res.json({ success: true, added: contacts.length });
       })
       .on('error', (err) => {
         res.status(500).json({ error: err.message });

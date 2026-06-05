@@ -9,8 +9,8 @@ const s = {
   card: { background: '#fff', border: '0.5px solid #e0e0d8', borderRadius: '12px', padding: '14px 16px' },
   cardTitle: { fontSize: '13px', fontWeight: '500', color: '#111', marginBottom: '12px' },
   label: { fontSize: '12px', color: '#666', marginBottom: '5px' },
-  input: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', marginBottom: '10px', background: '#fff' },
-  textarea: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', marginBottom: '10px', background: '#fff', resize: 'vertical', minHeight: '120px', lineHeight: '1.6' },
+  input: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', marginBottom: '10px', background: '#fff', boxSizing: 'border-box' },
+  textarea: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', marginBottom: '10px', background: '#fff', resize: 'vertical', minHeight: '120px', lineHeight: '1.6', boxSizing: 'border-box' },
   btn: { padding: '8px 16px', fontSize: '13px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', cursor: 'pointer' },
   btnPrimary: { width: '100%', padding: '8px 16px', fontSize: '13px', borderRadius: '8px', border: 'none', background: '#111', color: '#fff', cursor: 'pointer', marginTop: '4px' },
   uploadZone: { border: '1.5px dashed #ccc', borderRadius: '12px', padding: '28px 16px', textAlign: 'center', cursor: 'pointer', marginBottom: '12px' },
@@ -24,6 +24,8 @@ const s = {
   delBtn: { fontSize: '12px', padding: '4px 10px', borderRadius: '6px', border: '0.5px solid #f7c1c1', background: '#fff', color: '#A32D2D', cursor: 'pointer' },
   success: { background: '#eaf3de', border: '0.5px solid #c0dd97', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#3B6D11', marginBottom: '12px' },
   error: { background: '#fcebeb', border: '0.5px solid #f7c1c1', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#A32D2D', marginBottom: '12px' },
+  infoBox: { background: '#e6f1fb', border: '0.5px solid #b5d4f4', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#185FA5', marginBottom: '12px', lineHeight: '1.8' },
+  codeChip: { display: 'inline-block', background: '#fff', border: '0.5px solid #b5d4f4', borderRadius: '4px', padding: '1px 6px', fontFamily: 'monospace', fontSize: '11px' },
 };
 
 export default function Contacts() {
@@ -66,7 +68,7 @@ export default function Contacts() {
       formData.append('file', file);
       formData.append('list_name', csvListName);
       const res = await uploadCSV(formData);
-      showMsg(`Imported ${res.data.added} emails to "${csvListName}"`);
+      showMsg(`Imported ${res.data.added} contacts to "${csvListName}"`);
       setCsvListName(''); setFile(null);
       load();
     } catch (e) { showErr('Error uploading file'); }
@@ -74,10 +76,8 @@ export default function Contacts() {
 
   const handleDelete = async (name) => {
     if (!window.confirm(`Delete list "${name}"?`)) return;
-    try {
-      await deleteContactList(name);
-      load();
-    } catch (e) { showErr('Error deleting list'); }
+    try { await deleteContactList(name); load(); }
+    catch (e) { showErr('Error deleting list'); }
   };
 
   return (
@@ -92,14 +92,26 @@ export default function Contacts() {
       {msg && <div style={s.success}>{msg}</div>}
       {err && <div style={s.error}>{err}</div>}
 
+      <div style={s.infoBox}>
+        <strong>Personalization columns supported in CSV:</strong><br />
+        <span style={s.codeChip}>email</span> (required) &nbsp;
+        <span style={s.codeChip}>first_name</span> &nbsp;
+        <span style={s.codeChip}>last_name</span> &nbsp;
+        <span style={s.codeChip}>company</span> &nbsp;
+        <span style={s.codeChip}>website</span> &nbsp;
+        <span style={s.codeChip}>custom1</span> &nbsp;
+        <span style={s.codeChip}>custom2</span><br />
+        Use these as tags in your email: <span style={s.codeChip}>{'{{first_name}}'}</span> <span style={s.codeChip}>{'{{company}}'}</span> etc.
+      </div>
+
       <div style={s.grid}>
         <div style={s.card}>
-          <div style={s.cardTitle}>Upload CSV or Excel</div>
+          <div style={s.cardTitle}>Upload CSV</div>
           <div style={s.label}>List name</div>
-          <input style={s.input} placeholder="e.g. Black Friday list" value={csvListName} onChange={e => setCsvListName(e.target.value)} />
+          <input style={s.input} placeholder="e.g. Shopify merchants batch 1" value={csvListName} onChange={e => setCsvListName(e.target.value)} />
           <div style={s.uploadZone} onClick={() => document.getElementById('csvfile').click()}>
             <div style={s.uploadTitle}>{file ? file.name : 'Drop your file here'}</div>
-            <div style={s.uploadSub}>CSV file · must have an "email" column</div>
+            <div style={s.uploadSub}>CSV · must have an "email" column · optional: first_name, company, website</div>
             <button style={s.btn}>Browse file</button>
             <input id="csvfile" type="file" accept=".csv" style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
           </div>

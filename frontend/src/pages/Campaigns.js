@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getCampaigns, createCampaign, launchCampaign, pauseCampaign, resumeCampaign, deleteCampaign, getContactLists } from '../api';
+import { getCampaigns, createCampaign, launchCampaign, pauseCampaign, resumeCampaign, deleteCampaign, getContactLists, createFollowup, getFollowupStats, deleteFollowup } from '../api';
 
 const s = {
   title: { fontSize: '20px', fontWeight: '500', color: '#111', marginBottom: '4px' },
@@ -9,19 +9,21 @@ const s = {
   btnSuccess: { padding: '8px 16px', fontSize: '13px', borderRadius: '8px', border: 'none', background: '#3B6D11', color: '#fff', cursor: 'pointer' },
   btn: { padding: '6px 12px', fontSize: '12px', borderRadius: '6px', border: '0.5px solid #ccc', background: '#fff', cursor: 'pointer', marginLeft: '6px' },
   btnDanger: { padding: '6px 12px', fontSize: '12px', borderRadius: '6px', border: '0.5px solid #f7c1c1', background: '#fff', color: '#A32D2D', cursor: 'pointer', marginLeft: '6px' },
+  btnSmall: { padding: '5px 10px', fontSize: '12px', borderRadius: '6px', border: '0.5px solid #ccc', background: '#fff', cursor: 'pointer' },
   card: { background: '#fff', border: '0.5px solid #e0e0d8', borderRadius: '12px', padding: '16px', marginBottom: '12px' },
   cardTitle: { fontSize: '14px', fontWeight: '500', color: '#111', marginBottom: '14px' },
   label: { fontSize: '12px', color: '#666', marginBottom: '5px', marginTop: '10px' },
-  input: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', outline: 'none' },
+  input: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', outline: 'none', boxSizing: 'border-box' },
   select: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff' },
+  textarea: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', resize: 'vertical', minHeight: '80px', outline: 'none', fontFamily: 'inherit', lineHeight: '1.6', boxSizing: 'border-box' },
   row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
   variationCard: { border: '0.5px solid #e0e0d8', borderRadius: '10px', padding: '14px', marginBottom: '12px', background: '#fafaf8' },
   variationHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' },
   variationTitle: { fontSize: '13px', fontWeight: '500', color: '#111' },
   editorWrap: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', border: '0.5px solid #ccc', borderRadius: '8px', overflow: 'hidden', marginBottom: '10px' },
   editorHeader: { padding: '7px 12px', background: '#f5f5f0', borderBottom: '0.5px solid #ccc', fontSize: '12px', fontWeight: '500', color: '#666' },
-  editorTextarea: { width: '100%', fontSize: '12px', padding: '10px', border: 'none', borderRight: '0.5px solid #ccc', resize: 'none', minHeight: '200px', fontFamily: 'monospace', lineHeight: '1.6', outline: 'none', background: '#fff' },
-  plainTextarea: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', resize: 'vertical', minHeight: '70px', lineHeight: '1.6', outline: 'none', fontFamily: 'inherit' },
+  editorTextarea: { width: '100%', fontSize: '12px', padding: '10px', border: 'none', borderRight: '0.5px solid #ccc', resize: 'none', minHeight: '200px', fontFamily: 'monospace', lineHeight: '1.6', outline: 'none', background: '#fff', boxSizing: 'border-box' },
+  plainTextarea: { width: '100%', fontSize: '13px', padding: '8px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', resize: 'vertical', minHeight: '70px', lineHeight: '1.6', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' },
   speedGrid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '12px', marginTop: '6px' },
   speedOpt: { border: '0.5px solid #ccc', borderRadius: '8px', padding: '8px 6px', cursor: 'pointer', textAlign: 'center' },
   speedOptSel: { border: '1.5px solid #185FA5', background: '#e6f1fb' },
@@ -47,12 +49,18 @@ const s = {
   success: { background: '#eaf3de', border: '0.5px solid #c0dd97', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#3B6D11', marginBottom: '12px' },
   error: { background: '#fcebeb', border: '0.5px solid #f7c1c1', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#A32D2D', marginBottom: '12px' },
   infoBox: { background: '#e6f1fb', border: '0.5px solid #b5d4f4', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#185FA5', marginTop: '6px', marginBottom: '8px' },
+  tagBox: { background: '#f5f5f0', border: '0.5px solid #e0e0d8', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#666', marginBottom: '10px' },
+  tagChip: { display: 'inline-block', background: '#fff', border: '0.5px solid #ccc', borderRadius: '6px', padding: '2px 8px', fontSize: '12px', fontFamily: 'monospace', color: '#185FA5', margin: '2px', cursor: 'pointer', userSelect: 'none' },
   divider: { border: 'none', borderTop: '0.5px solid #e0e0d8', margin: '16px 0' },
   footerBtns: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' },
   addVariationBtn: { padding: '7px 14px', fontSize: '12px', borderRadius: '8px', border: '1.5px dashed #ccc', background: '#fff', cursor: 'pointer', width: '100%', color: '#666', marginBottom: '12px' },
   removeBtn: { fontSize: '11px', padding: '3px 8px', borderRadius: '6px', border: '0.5px solid #f7c1c1', background: '#fff', color: '#A32D2D', cursor: 'pointer' },
-  countInput: { width: '80px', fontSize: '13px', padding: '7px 10px', borderRadius: '8px', border: '0.5px solid #ccc', background: '#fff', outline: 'none', textAlign: 'center' },
   variantBadge: { display: 'inline-block', fontSize: '11px', fontWeight: '500', padding: '2px 8px', borderRadius: '999px', background: '#e6f1fb', color: '#185FA5', marginRight: '8px' },
+  followupCard: { border: '0.5px solid #e0e0d8', borderRadius: '10px', padding: '12px 14px', marginBottom: '8px', background: '#fafaf8', display: 'flex', alignItems: 'center', gap: '12px' },
+  followupInfo: { flex: 1 },
+  followupDay: { fontSize: '13px', fontWeight: '500', color: '#111' },
+  followupSub: { fontSize: '11px', color: '#888', marginTop: '2px' },
+  expandBtn: { fontSize: '12px', color: '#185FA5', cursor: 'pointer', marginTop: '8px', display: 'inline-block' },
 };
 
 const speedOptions = [
@@ -63,17 +71,18 @@ const speedOptions = [
   { label: '3s', sub: 'Fastest', value: 3 },
 ];
 
-const defaultHtml = `<h2 style="color:#111;">Hello there!</h2>
-<p>This is your email content. You can use HTML to style it.</p>
-<p>Add images, buttons, links and more.</p>
-<a href="https://yoursite.com" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;border-radius:6px;text-decoration:none;">Click here</a>
-<p style="color:#888;font-size:12px;margin-top:24px;">To unsubscribe, reply to this email.</p>`;
+const TAGS = ['{{first_name}}', '{{last_name}}', '{{email}}', '{{company}}', '{{website}}', '{{custom1}}', '{{custom2}}'];
+
+const defaultHtml = `<h2 style="color:#111;">Hi {{first_name}},</h2>
+<p>I noticed {{company}} and wanted to reach out...</p>
+<p>Add your email content here.</p>
+<a href="https://yoursite.com" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;border-radius:6px;text-decoration:none;">Learn more</a>`;
 
 const emptyVariation = () => ({
   id: Date.now(),
   subject: '',
   body_html: defaultHtml,
-  body_plain: 'Hello there!\n\nThis is your email content.\n\nTo unsubscribe, reply to this email.',
+  body_plain: 'Hi {{first_name}},\n\nI noticed {{company}} and wanted to reach out...\n\nAdd your email content here.',
 });
 
 function VariationEditor({ variation, index, onChange, onRemove, showRemove }) {
@@ -90,6 +99,10 @@ function VariationEditor({ variation, index, onChange, onRemove, showRemove }) {
     }
   }, [variation.body_html]);
 
+  const insertTag = (tag) => {
+    onChange({ ...variation, subject: variation.subject + tag });
+  };
+
   return (
     <div style={s.variationCard}>
       <div style={s.variationHeader}>
@@ -100,10 +113,17 @@ function VariationEditor({ variation, index, onChange, onRemove, showRemove }) {
         {showRemove && <button style={s.removeBtn} onClick={onRemove}>Remove</button>}
       </div>
 
+      <div style={s.tagBox}>
+        <span style={{ marginRight: '8px', fontSize: '11px', color: '#888' }}>Click to insert tag:</span>
+        {TAGS.map(tag => (
+          <span key={tag} style={s.tagChip} onClick={() => insertTag(tag)}>{tag}</span>
+        ))}
+      </div>
+
       <div style={s.label}>Subject line</div>
       <input
         style={s.input}
-        placeholder={`e.g. Subject line variation ${index + 1}`}
+        placeholder={`e.g. Quick question about {{company}}`}
         value={variation.subject}
         onChange={e => onChange({ ...variation, subject: e.target.value })}
       />
@@ -135,8 +155,95 @@ function VariationEditor({ variation, index, onChange, onRemove, showRemove }) {
         style={s.plainTextarea}
         value={variation.body_plain}
         onChange={e => onChange({ ...variation, body_plain: e.target.value })}
-        placeholder="Plain text version..."
+        placeholder="Plain text version (use {{first_name}}, {{company}} etc)..."
       />
+    </div>
+  );
+}
+
+function FollowUpManager({ campaign }) {
+  const [sequences, setSequences] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ delay_days: 3, subject: '', body_html: '', body_plain: '' });
+  const [msg, setMsg] = useState(null);
+
+  const load = async () => {
+    try {
+      const res = await getFollowupStats(campaign.id);
+      setSequences(res.data);
+    } catch (e) {}
+  };
+
+  useEffect(() => { load(); }, [campaign.id]);
+
+  const handleAdd = async () => {
+    if (!form.subject) return setMsg('Please enter a subject line');
+    try {
+      const res = await createFollowup({ campaign_id: campaign.id, ...form });
+      setMsg(`Follow-up scheduled for ${res.data.scheduled} contacts`);
+      setShowAdd(false);
+      setForm({ delay_days: 3, subject: '', body_html: '', body_plain: '' });
+      load();
+    } catch (e) { setMsg('Error creating follow-up'); }
+  };
+
+  const handleDelete = async (id) => {
+    try { await deleteFollowup(id); load(); } catch (e) {}
+  };
+
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '500', color: '#111' }}>Follow-up sequences</div>
+        <button style={s.btnSmall} onClick={() => setShowAdd(!showAdd)}>
+          {showAdd ? 'Cancel' : '+ Add follow-up'}
+        </button>
+      </div>
+
+      {msg && <div style={{ ...s.infoBox, marginBottom: '8px' }}>{msg}</div>}
+
+      {sequences.length === 0 && !showAdd && (
+        <div style={{ fontSize: '12px', color: '#888', padding: '8px 0' }}>
+          No follow-ups set. Add one to automatically email non-responders after X days.
+        </div>
+      )}
+
+      {sequences.map(seq => (
+        <div key={seq.id} style={s.followupCard}>
+          <div style={s.followupInfo}>
+            <div style={s.followupDay}>Day +{seq.delay_days}: {seq.subject}</div>
+            <div style={s.followupSub}>{seq.sent} sent · {seq.pending} pending · {seq.failed} failed</div>
+          </div>
+          <button style={s.removeBtn} onClick={() => handleDelete(seq.id)}>Remove</button>
+        </div>
+      ))}
+
+      {showAdd && (
+        <div style={{ background: '#f5f5f0', borderRadius: '10px', padding: '14px', marginTop: '8px' }}>
+          <div style={s.label}>Send after how many days?</div>
+          <input style={{ ...s.input, width: '100px' }} type="number" min="1" value={form.delay_days}
+            onChange={e => setForm({ ...form, delay_days: parseInt(e.target.value) })} />
+
+          <div style={s.label}>Follow-up subject line</div>
+          <input style={s.input} placeholder="e.g. Just following up on my last email" value={form.subject}
+            onChange={e => setForm({ ...form, subject: e.target.value })} />
+
+          <div style={s.label}>Email body (HTML)</div>
+          <textarea style={s.textarea} placeholder="<p>Hi {{first_name}}, just wanted to follow up...</p>"
+            value={form.body_html} onChange={e => setForm({ ...form, body_html: e.target.value })} />
+
+          <div style={s.label}>Plain text</div>
+          <textarea style={{ ...s.textarea, minHeight: '60px' }} placeholder="Hi {{first_name}}, just wanted to follow up..."
+            value={form.body_plain} onChange={e => setForm({ ...form, body_plain: e.target.value })} />
+
+          <div style={{ marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button style={s.btnSmall} onClick={() => setShowAdd(false)}>Cancel</button>
+            <button style={{ ...s.btnSmall, background: '#111', color: '#fff', border: 'none' }} onClick={handleAdd}>
+              Schedule follow-up
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -145,15 +252,13 @@ export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
   const [lists, setLists] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [expandedCampaign, setExpandedCampaign] = useState(null);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [variations, setVariations] = useState([emptyVariation()]);
   const [speed, setSpeed] = useState(30);
   const [scheduleType, setScheduleType] = useState('immediate');
-  const [form, setForm] = useState({
-    name: '', contact_list: '',
-    start_time: '08:00', end_time: '22:00'
-  });
+  const [form, setForm] = useState({ name: '', contact_list: '', start_time: '08:00', end_time: '22:00' });
 
   const load = async () => {
     try {
@@ -169,23 +274,14 @@ export default function Campaigns() {
   const showErr = (e) => { setErr(e); setTimeout(() => setErr(null), 5000); };
 
   const addVariation = () => setVariations([...variations, emptyVariation()]);
-
-  const updateVariation = (index, updated) => {
-    const newVars = [...variations];
-    newVars[index] = updated;
-    setVariations(newVars);
-  };
-
-  const removeVariation = (index) => {
-    setVariations(variations.filter((_, i) => i !== index));
-  };
+  const updateVariation = (index, updated) => { const v = [...variations]; v[index] = updated; setVariations(v); };
+  const removeVariation = (index) => setVariations(variations.filter((_, i) => i !== index));
 
   const validate = () => {
     if (!form.name) return showErr('Please enter a campaign name') || false;
     if (!form.contact_list) return showErr('Please select a contact list') || false;
     for (let i = 0; i < variations.length; i++) {
       if (!variations[i].subject) return showErr(`Please enter subject line for Variation ${i + 1}`) || false;
-      if (!variations[i].body_html && !variations[i].body_plain) return showErr(`Please add email body for Variation ${i + 1}`) || false;
     }
     return true;
   };
@@ -214,12 +310,8 @@ export default function Campaigns() {
 
   const handleSaveDraft = async () => {
     if (!validate()) return;
-    try {
-      await createCampaign(buildPayload());
-      showMsg('Campaign saved as draft!');
-      resetForm();
-      load();
-    } catch (e) { showErr('Error saving campaign'); }
+    try { await createCampaign(buildPayload()); showMsg('Campaign saved as draft!'); resetForm(); load(); }
+    catch (e) { showErr('Error saving campaign'); }
   };
 
   const handleCreateAndLaunch = async () => {
@@ -227,9 +319,8 @@ export default function Campaigns() {
     try {
       const res = await createCampaign(buildPayload());
       await launchCampaign(res.data.id);
-      showMsg('Campaign launched! Emails are now being sent randomly across all variations.');
-      resetForm();
-      load();
+      showMsg('Campaign launched!');
+      resetForm(); load();
     } catch (e) { showErr(e.response?.data?.error || 'Error launching campaign'); }
   };
 
@@ -238,13 +329,8 @@ export default function Campaigns() {
     catch (e) { showErr(e.response?.data?.error || 'Error launching'); }
   };
 
-  const handlePause = async (id) => {
-    try { await pauseCampaign(id); load(); } catch (e) { showErr('Error pausing'); }
-  };
-
-  const handleResume = async (id) => {
-    try { await resumeCampaign(id); load(); } catch (e) { showErr('Error resuming'); }
-  };
+  const handlePause = async (id) => { try { await pauseCampaign(id); load(); } catch (e) { showErr('Error pausing'); } };
+  const handleResume = async (id) => { try { await resumeCampaign(id); load(); } catch (e) { showErr('Error resuming'); } };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this campaign and all its queue?')) return;
@@ -291,7 +377,8 @@ export default function Campaigns() {
           <div style={s.row2}>
             <div>
               <div style={s.label}>Campaign name</div>
-              <input style={s.input} placeholder="e.g. Black Friday promo" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+              <input style={s.input} placeholder="e.g. Shopify merchants outreach" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })} />
             </div>
             <div>
               <div style={s.label}>Contact list</div>
@@ -302,15 +389,15 @@ export default function Campaigns() {
             </div>
           </div>
 
+          <div style={s.infoBox}>
+            💡 <strong>Personalization tip:</strong> Upload a CSV with columns like <strong>first_name</strong>, <strong>company</strong>, <strong>website</strong> — then use tags like <strong>{'{{first_name}}'}</strong> and <strong>{'{{company}}'}</strong> in your subject and body. Each email will be personalized automatically.
+          </div>
+
           <hr style={s.divider} />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div style={s.cardTitle}>Email content variations</div>
             <div style={{ fontSize: '12px', color: '#888' }}>{variations.length} variation{variations.length > 1 ? 's' : ''} · randomly distributed</div>
-          </div>
-
-          <div style={s.infoBox}>
-            Add multiple subject lines and email bodies. The system will randomly pick one for each recipient — this helps avoid spam filters when sending to large lists.
           </div>
 
           {variations.map((v, i) => (
@@ -324,19 +411,17 @@ export default function Campaigns() {
             />
           ))}
 
-          <button style={s.addVariationBtn} onClick={addVariation}>
-            + Add another variation
-          </button>
+          <button style={s.addVariationBtn} onClick={addVariation}>+ Add another variation</button>
 
           <hr style={s.divider} />
-
           <div style={s.cardTitle}>Schedule</div>
           <div style={s.scheduleGrid}>
             {[
               { label: 'Send immediately', sub: 'Starts right after launch, runs 24/7', value: 'immediate' },
               { label: 'Set time window', sub: 'Only send between certain hours', value: 'window' },
             ].map(opt => (
-              <div key={opt.value} style={{ ...s.schedOpt, ...(scheduleType === opt.value ? s.schedOptSel : {}) }} onClick={() => setScheduleType(opt.value)}>
+              <div key={opt.value} style={{ ...s.schedOpt, ...(scheduleType === opt.value ? s.schedOptSel : {}) }}
+                onClick={() => setScheduleType(opt.value)}>
                 <div style={scheduleType === opt.value ? s.schedLabelSel : s.schedLabel}>{opt.label}</div>
                 <div style={s.schedSub}>{opt.sub}</div>
               </div>
@@ -359,7 +444,8 @@ export default function Campaigns() {
           <div style={s.label}>Sending speed</div>
           <div style={s.speedGrid}>
             {speedOptions.map(opt => (
-              <div key={opt.value} style={{ ...s.speedOpt, ...(speed === opt.value ? s.speedOptSel : {}) }} onClick={() => setSpeed(opt.value)}>
+              <div key={opt.value} style={{ ...s.speedOpt, ...(speed === opt.value ? s.speedOptSel : {}) }}
+                onClick={() => setSpeed(opt.value)}>
                 <div style={speed === opt.value ? s.speedLabelSel : s.speedLabel}>{opt.label}</div>
                 <div style={s.speedSub}>{opt.sub}</div>
               </div>
@@ -391,23 +477,37 @@ export default function Campaigns() {
           <div style={{ fontSize: '13px', color: '#888', padding: '20px 0' }}>No campaigns yet. Create one above.</div>
         )}
         {campaigns.map(c => (
-          <div key={c.id} style={s.campRow}>
-            <div style={{ flex: 1 }}>
-              <div style={s.campName}>{c.name}</div>
-              <div style={s.campSub}>
-                {c.contact_list} · {c.delay_seconds}s delay · {c.sent_count}/{c.total_contacts} sent
-                {c.failed_count > 0 && <span style={{ color: '#A32D2D' }}> · {c.failed_count} failed</span>}
-                {c.content_variations && (() => { try { return ` · ${JSON.parse(c.content_variations).length} variations`; } catch(e) { return ''; } })()}
+          <div key={c.id}>
+            <div style={s.campRow}>
+              <div style={{ flex: 1 }}>
+                <div style={s.campName}>{c.name}</div>
+                <div style={s.campSub}>
+                  {c.contact_list} · {c.delay_seconds}s delay · {c.sent_count}/{c.total_contacts} sent
+                  {c.failed_count > 0 && <span style={{ color: '#A32D2D' }}> · {c.failed_count} failed</span>}
+                  {c.open_count > 0 && <span style={{ color: '#185FA5' }}> · {c.open_count} opens</span>}
+                  {c.reply_count > 0 && <span style={{ color: '#3B6D11' }}> · {c.reply_count} replies</span>}
+                </div>
+                <div style={s.progressBar}>
+                  <div style={{ ...s.progressFill, width: `${getPct(c)}%` }} />
+                </div>
+                <span
+                  style={s.expandBtn}
+                  onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)}
+                >
+                  {expandedCampaign === c.id ? '▲ Hide follow-ups' : '▼ Follow-up sequences'}
+                </span>
               </div>
-              <div style={s.progressBar}>
-                <div style={{ ...s.progressFill, width: `${getPct(c)}%` }} />
-              </div>
+              <span style={getPillStyle(c.status)}>{c.status}</span>
+              {c.status === 'draft' && <button style={s.btn} onClick={() => handleLaunch(c.id)}>Launch</button>}
+              {c.status === 'running' && <button style={s.btn} onClick={() => handlePause(c.id)}>Pause</button>}
+              {c.status === 'paused' && <button style={s.btn} onClick={() => handleResume(c.id)}>Resume</button>}
+              <button style={s.btnDanger} onClick={() => handleDelete(c.id)}>Delete</button>
             </div>
-            <span style={getPillStyle(c.status)}>{c.status}</span>
-            {c.status === 'draft' && <button style={s.btn} onClick={() => handleLaunch(c.id)}>Launch</button>}
-            {c.status === 'running' && <button style={s.btn} onClick={() => handlePause(c.id)}>Pause</button>}
-            {c.status === 'paused' && <button style={s.btn} onClick={() => handleResume(c.id)}>Resume</button>}
-            <button style={s.btnDanger} onClick={() => handleDelete(c.id)}>Delete</button>
+            {expandedCampaign === c.id && (
+              <div style={{ padding: '12px 0 4px 0', borderBottom: '0.5px solid #e0e0d8' }}>
+                <FollowUpManager campaign={c} />
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -12,7 +12,7 @@ const oauth2Client = new google.auth.OAuth2(
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, email, display_name, status, daily_sent, last_reset, created_at FROM accounts'
+      'SELECT id, email, display_name, status, daily_sent, daily_limit, last_reset, created_at FROM accounts'
     );
     res.json(result.rows);
   } catch (err) {
@@ -75,6 +75,17 @@ router.put('/:id/display-name', async (req, res) => {
   try {
     const { display_name } = req.body;
     await db.query('UPDATE accounts SET display_name = $1 WHERE id = $2', [display_name, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update daily limit
+router.put('/:id/limit', async (req, res) => {
+  try {
+    const { daily_limit } = req.body;
+    await db.query('UPDATE accounts SET daily_limit = $1 WHERE id = $2', [daily_limit, req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

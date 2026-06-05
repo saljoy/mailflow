@@ -4,6 +4,8 @@ import Campaigns from './pages/Campaigns';
 import Contacts from './pages/Contacts';
 import Accounts from './pages/Accounts';
 import Logs from './pages/Logs';
+import Analytics from './pages/Analytics';
+import Blacklist from './pages/Blacklist';
 import PinModal from './components/PinModal';
 
 const styles = {
@@ -13,6 +15,7 @@ const styles = {
   logoSub: { fontSize: '11px', fontWeight: '400', color: '#999', display: 'block', marginTop: '2px' },
   navItem: { display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', fontSize: '13px', color: '#666', cursor: 'pointer', transition: 'background 0.1s' },
   navItemActive: { background: '#f5f5f0', color: '#111', fontWeight: '500' },
+  navSection: { padding: '8px 16px 4px', fontSize: '10px', color: '#bbb', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' },
   dot: { width: '7px', height: '7px', borderRadius: '50%' },
   main: { flex: 1, padding: '24px', overflowY: 'auto', background: '#f5f5f0' },
   statusBar: { padding: '12px 16px', borderTop: '0.5px solid #e0e0d8', marginTop: 'auto' },
@@ -24,11 +27,13 @@ const styles = {
 };
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', color: '#3B6D11', protected: false },
-  { id: 'campaigns', label: 'Campaigns', color: '#185FA5', protected: true },
-  { id: 'contacts', label: 'Contacts', color: '#534AB7', protected: true },
-  { id: 'accounts', label: 'Gmail Accounts', color: '#854F0B', protected: true },
-  { id: 'logs', label: 'Logs', color: '#888', protected: false },
+  { id: 'dashboard', label: 'Dashboard', color: '#3B6D11', protected: false, section: 'Main' },
+  { id: 'analytics', label: 'Analytics', color: '#185FA5', protected: false, section: null },
+  { id: 'campaigns', label: 'Campaigns', color: '#185FA5', protected: true, section: 'Sending' },
+  { id: 'contacts', label: 'Contacts', color: '#534AB7', protected: true, section: null },
+  { id: 'accounts', label: 'Gmail Accounts', color: '#854F0B', protected: true, section: null },
+  { id: 'blacklist', label: 'Blacklist', color: '#A32D2D', protected: true, section: 'Settings' },
+  { id: 'logs', label: 'Logs', color: '#888', protected: false, section: null },
 ];
 
 export default function App() {
@@ -69,10 +74,7 @@ export default function App() {
   };
 
   const requirePin = useCallback((label, action) => {
-    if (pinVerified) {
-      action();
-      return;
-    }
+    if (pinVerified) { action(); return; }
     setActionLabel(label);
     setPendingAction(() => action);
     setShowPinModal(true);
@@ -81,13 +83,17 @@ export default function App() {
   const renderPage = () => {
     switch (page) {
       case 'dashboard': return <Dashboard />;
+      case 'analytics': return <Analytics />;
       case 'campaigns': return <Campaigns requirePin={requirePin} />;
       case 'contacts': return <Contacts requirePin={requirePin} />;
       case 'accounts': return <Accounts requirePin={requirePin} />;
+      case 'blacklist': return <Blacklist />;
       case 'logs': return <Logs />;
       default: return <Dashboard />;
     }
   };
+
+  let lastSection = null;
 
   return (
     <div style={styles.shell}>
@@ -105,19 +111,25 @@ export default function App() {
           <span style={styles.logoSub}>Email automation</span>
         </div>
 
-        {navItems.map(item => (
-          <div
-            key={item.id}
-            style={{ ...styles.navItem, ...(page === item.id ? styles.navItemActive : {}) }}
-            onClick={() => handleNavClick(item)}
-          >
-            <div style={{ ...styles.dot, background: item.color }} />
-            {item.label}
-            {item.protected && !pinVerified && (
-              <span style={styles.lockBadge}>🔒</span>
-            )}
-          </div>
-        ))}
+        {navItems.map(item => {
+          const showSection = item.section && item.section !== lastSection;
+          if (item.section) lastSection = item.section;
+          return (
+            <React.Fragment key={item.id}>
+              {showSection && <div style={styles.navSection}>{item.section}</div>}
+              <div
+                style={{ ...styles.navItem, ...(page === item.id ? styles.navItemActive : {}) }}
+                onClick={() => handleNavClick(item)}
+              >
+                <div style={{ ...styles.dot, background: item.color }} />
+                {item.label}
+                {item.protected && !pinVerified && (
+                  <span style={styles.lockBadge}>🔒</span>
+                )}
+              </div>
+            </React.Fragment>
+          );
+        })}
 
         <div style={styles.statusBar}>
           <div style={styles.statusLabel}>System status</div>

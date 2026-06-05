@@ -15,6 +15,7 @@ export const resetAccount = (id) => API.post(`/api/accounts/${id}/reset`);
 export const pauseAccount = (id) => API.post(`/api/accounts/${id}/pause`);
 export const resumeAccount = (id) => API.post(`/api/accounts/${id}/resume`);
 export const updateDisplayName = (id, display_name) => API.put(`/api/accounts/${id}/display-name`, { display_name });
+export const updateDailyLimit = (id, daily_limit) => API.put(`/api/accounts/${id}/limit`, { daily_limit });
 
 // Campaigns
 export const getCampaigns = () => API.get('/api/campaigns');
@@ -35,3 +36,24 @@ export const deleteContactList = (name) => API.delete(`/api/contacts/lists/${nam
 export const getQueue = () => API.get('/api/queue');
 export const getStats = () => API.get('/api/queue/stats');
 export const getLogs = () => API.get('/api/queue/logs');
+
+// Templates
+export const getTemplates = () => API.get('/api/templates');
+export const createTemplate = (data) => API.post('/api/templates', data);
+export const updateTemplate = (id, data) => API.put(`/api/templates/${id}`, data);
+export const deleteTemplate = (id) => API.delete(`/api/templates/${id}`);
+
+// Blacklist
+export const getBlacklist = () => API.get('/api/blacklist');
+export const addToBlacklist = (data) => API.post('/api/blacklist', data);
+export const removeFromBlacklist = (id) => API.delete(`/api/blacklist/${id}`);
+
+// Unsubscribes
+export const getUnsubscribes = () => API.get('/api/tracking/unsubscribes');
+export const removeUnsubscribe = (email) => API.delete(`/api/tracking/unsubscribes/${email}`);
+
+// Follow-up sequences
+export const getFollowups = (campaignId) => API.get(`/api/followups/campaign/${campaignId}`);
+export const createFollowup = (data) => API.post('/api/followups', data);
+export const deleteFollowup = (id) => API.delete(`/api/followups/${id}`);
+export const getFollowupStats = (campaignId) => API.get(`/api/followups/stats/${campaignId}`);

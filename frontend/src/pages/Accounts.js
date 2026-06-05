@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAccounts, getAuthUrl, deleteAccount, resetAccount, pauseAccount, resumeAccount, updateDisplayName } from '../api';
+import { getAccounts, getAuthUrl, deleteAccount, resetAccount, pauseAccount, resumeAccount, updateDisplayName, updateDailyLimit } from '../api';
 
 const s = {
   title: { fontSize: '20px', fontWeight: '500', color: '#111', marginBottom: '4px' },
@@ -8,13 +8,14 @@ const s = {
   btnPrimary: { padding: '8px 16px', fontSize: '13px', borderRadius: '8px', border: 'none', background: '#111', color: '#fff', cursor: 'pointer' },
   card: { background: '#fff', border: '0.5px solid #e0e0d8', borderRadius: '12px', padding: '14px 16px', marginBottom: '12px' },
   cardTitle: { fontSize: '13px', fontWeight: '500', color: '#111', marginBottom: '12px' },
-  acctRow: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '0.5px solid #e0e0d8', flexWrap: 'wrap' },
+  acctRow: { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '14px 0', borderBottom: '0.5px solid #e0e0d8', flexWrap: 'wrap' },
   avatar: { width: '38px', height: '38px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '500', flexShrink: 0, background: '#e6f1fb', color: '#185FA5' },
   acctInfo: { flex: 1, minWidth: '160px' },
   acctEmail: { fontSize: '13px', color: '#111', fontWeight: '500' },
   acctSub: { fontSize: '11px', color: '#888', marginTop: '2px' },
-  nameRow: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' },
+  nameRow: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' },
   nameInput: { fontSize: '12px', padding: '3px 8px', borderRadius: '6px', border: '0.5px solid #ccc', background: '#fff', width: '160px', outline: 'none' },
+  limitInput: { fontSize: '12px', padding: '3px 8px', borderRadius: '6px', border: '0.5px solid #ccc', background: '#fff', width: '70px', outline: 'none', textAlign: 'center' },
   saveBtn: { fontSize: '11px', padding: '3px 8px', borderRadius: '6px', border: 'none', background: '#111', color: '#fff', cursor: 'pointer' },
   pill: { fontSize: '10px', fontWeight: '500', padding: '2px 8px', borderRadius: '999px' },
   pillOk: { background: '#eaf3de', color: '#3B6D11' },
@@ -32,12 +33,17 @@ const s = {
   statCard: { background: '#f5f5f0', borderRadius: '8px', padding: '10px 14px', textAlign: 'center' },
   statNum: { fontSize: '22px', fontWeight: '500', color: '#111' },
   statLabel: { fontSize: '11px', color: '#888', marginTop: '2px' },
+  progressBar: { height: '4px', background: '#f0f0ea', borderRadius: '2px', marginTop: '4px', overflow: 'hidden', width: '100%' },
+  progressFill: { height: '100%', borderRadius: '2px', background: '#185FA5', transition: 'width 0.3s' },
+  limitRow: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' },
+  limitLabel: { fontSize: '11px', color: '#888' },
 };
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingName, setEditingName] = useState({});
+  const [editingLimit, setEditingLimit] = useState({});
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
 
@@ -46,8 +52,13 @@ export default function Accounts() {
       const res = await getAccounts();
       setAccounts(res.data);
       const names = {};
-      res.data.forEach(a => { names[a.id] = a.display_name || ''; });
+      const limits = {};
+      res.data.forEach(a => {
+        names[a.id] = a.display_name || '';
+        limits[a.id] = a.daily_limit || 400;
+      });
       setEditingName(names);
+      setEditingLimit(limits);
     } catch (e) { console.error(e); }
   };
 
@@ -62,10 +73,7 @@ export default function Accounts() {
       const res = await getAuthUrl();
       window.open(res.data.url, '_blank');
       setTimeout(() => { load(); setLoading(false); }, 5000);
-    } catch (e) {
-      showErr('Error getting auth URL');
-      setLoading(false);
-    }
+    } catch (e) { showErr('Error getting auth URL'); setLoading(false); }
   };
 
   const handleDelete = async (id, email) => {
@@ -78,19 +86,21 @@ export default function Accounts() {
   };
 
   const handlePause = async (id) => {
-    try { await pauseAccount(id); showMsg('Account paused.'); load(); } catch (e) { showErr('Error pausing account'); }
+    try { await pauseAccount(id); showMsg('Account paused.'); load(); } catch (e) { showErr('Error pausing'); }
   };
 
   const handleResume = async (id) => {
-    try { await resumeAccount(id); showMsg('Account resumed!'); load(); } catch (e) { showErr('Error resuming account'); }
+    try { await resumeAccount(id); showMsg('Account resumed!'); load(); } catch (e) { showErr('Error resuming'); }
   };
 
   const handleSaveName = async (id) => {
-    try {
-      await updateDisplayName(id, editingName[id]);
-      showMsg('Display name saved!');
-      load();
-    } catch (e) { showErr('Error saving name'); }
+    try { await updateDisplayName(id, editingName[id]); showMsg('Display name saved!'); load(); }
+    catch (e) { showErr('Error saving name'); }
+  };
+
+  const handleSaveLimit = async (id) => {
+    try { await updateDailyLimit(id, editingLimit[id]); showMsg('Daily limit saved!'); load(); }
+    catch (e) { showErr('Error saving limit'); }
   };
 
   const getInitials = (email) => {
@@ -99,8 +109,8 @@ export default function Accounts() {
   };
 
   const activeCount = accounts.filter(a => a.status === 'active').length;
-  const pausedCount = accounts.filter(a => a.status === 'paused').length;
   const totalSentToday = accounts.reduce((sum, a) => sum + (a.daily_sent || 0), 0);
+  const totalCapacity = accounts.reduce((sum, a) => sum + (a.daily_limit || 400), 0);
 
   return (
     <div>
@@ -123,79 +133,97 @@ export default function Accounts() {
           <div style={s.statLabel}>Total accounts</div>
         </div>
         <div style={s.statCard}>
-          <div style={s.statNum}>{activeCount}</div>
-          <div style={s.statLabel}>Active</div>
-        </div>
-        <div style={s.statCard}>
           <div style={s.statNum}>{totalSentToday}</div>
           <div style={s.statLabel}>Sent today</div>
+        </div>
+        <div style={s.statCard}>
+          <div style={s.statNum}>{totalCapacity - totalSentToday}</div>
+          <div style={s.statLabel}>Remaining today</div>
         </div>
       </div>
 
       <div style={s.infoBox}>
-        Emails are distributed equally across all <strong>active</strong> accounts using round-robin.
-        Pause any account that hits its daily limit — the scheduler will automatically skip paused accounts.
-        Each Gmail account can send up to <strong>500 emails/day</strong> (free) or <strong>2,000/day</strong> (Google Workspace).
-        Set a display name so recipients see a real name instead of just an email address.
+        Emails rotate equally across all <strong>active</strong> accounts. Set a daily limit per account to stay safe —
+        Gmail free accounts can send up to <strong>500/day</strong>, but we recommend <strong>400/day</strong> for safety.
+        Use personalization tags like <strong>{'{{first_name}}'}</strong>, <strong>{'{{company}}'}</strong>, <strong>{'{{website}}'}</strong> in your email templates.
       </div>
 
       <div style={s.card}>
         <div style={s.cardTitle}>Connected accounts ({accounts.length})</div>
         {accounts.length === 0 && (
-          <div style={s.emptyBox}>
-            No accounts connected yet. Click "+ Connect Gmail account" to get started.
-          </div>
+          <div style={s.emptyBox}>No accounts connected yet. Click "+ Connect Gmail account" to get started.</div>
         )}
-        {accounts.map(acct => (
-          <div key={acct.id} style={s.acctRow}>
-            <div style={{
-              ...s.avatar,
-              background: acct.status === 'paused' ? '#faeeda' : '#e6f1fb',
-              color: acct.status === 'paused' ? '#854F0B' : '#185FA5'
-            }}>
-              {getInitials(acct.email)}
-            </div>
+        {accounts.map(acct => {
+          const pct = Math.min(100, Math.round(((acct.daily_sent || 0) / (acct.daily_limit || 400)) * 100));
+          return (
+            <div key={acct.id} style={s.acctRow}>
+              <div style={{
+                ...s.avatar,
+                background: acct.status === 'paused' ? '#faeeda' : '#e6f1fb',
+                color: acct.status === 'paused' ? '#854F0B' : '#185FA5'
+              }}>
+                {getInitials(acct.email)}
+              </div>
 
-            <div style={s.acctInfo}>
-              <div style={s.acctEmail}>{acct.email}</div>
-              <div style={s.acctSub}>
-                {acct.daily_sent || 0} sent today
-                {acct.last_reset ? ` · Reset: ${new Date(acct.last_reset).toLocaleDateString()}` : ''}
-              </div>
-              <div style={s.nameRow}>
-                <input
-                  style={s.nameInput}
-                  placeholder="Set display name (e.g. James Merchant)"
-                  value={editingName[acct.id] || ''}
-                  onChange={e => setEditingName({ ...editingName, [acct.id]: e.target.value })}
-                  onKeyDown={e => e.key === 'Enter' && handleSaveName(acct.id)}
-                />
-                <button style={s.saveBtn} onClick={() => handleSaveName(acct.id)}>Save</button>
-              </div>
-              {acct.display_name && (
-                <div style={{ fontSize: '11px', color: '#3B6D11', marginTop: '2px' }}>
-                  Sends as: {acct.display_name} &lt;{acct.email}&gt;
+              <div style={s.acctInfo}>
+                <div style={s.acctEmail}>{acct.email}</div>
+                <div style={s.acctSub}>
+                  {acct.daily_sent || 0} / {acct.daily_limit || 400} sent today
+                  {acct.last_reset ? ` · Reset: ${new Date(acct.last_reset).toLocaleDateString()}` : ''}
                 </div>
-              )}
-            </div>
+                <div style={s.progressBar}>
+                  <div style={{ ...s.progressFill, width: `${pct}%`, background: pct >= 90 ? '#A32D2D' : pct >= 70 ? '#854F0B' : '#185FA5' }} />
+                </div>
 
-            <span style={{
-              ...s.pill,
-              ...(acct.status === 'active' ? s.pillOk : acct.status === 'paused' ? s.pillPaused : s.pillWarn)
-            }}>
-              {acct.status}
-            </span>
+                <div style={s.nameRow}>
+                  <input
+                    style={s.nameInput}
+                    placeholder="Set display name (e.g. James Merchant)"
+                    value={editingName[acct.id] || ''}
+                    onChange={e => setEditingName({ ...editingName, [acct.id]: e.target.value })}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveName(acct.id)}
+                  />
+                  <button style={s.saveBtn} onClick={() => handleSaveName(acct.id)}>Save</button>
+                </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {acct.status === 'active'
-                ? <button style={s.actionBtnPause} onClick={() => handlePause(acct.id)}>Pause</button>
-                : <button style={s.actionBtnResume} onClick={() => handleResume(acct.id)}>Resume</button>
-              }
-              <button style={s.actionBtn} onClick={() => handleReset(acct.id)}>Reset count</button>
-              <button style={s.actionBtnDanger} onClick={() => handleDelete(acct.id, acct.email)}>Remove</button>
+                <div style={s.limitRow}>
+                  <span style={s.limitLabel}>Daily limit:</span>
+                  <input
+                    style={s.limitInput}
+                    type="number"
+                    min="1"
+                    max="2000"
+                    value={editingLimit[acct.id] || 400}
+                    onChange={e => setEditingLimit({ ...editingLimit, [acct.id]: parseInt(e.target.value) })}
+                  />
+                  <button style={s.saveBtn} onClick={() => handleSaveLimit(acct.id)}>Set</button>
+                </div>
+
+                {acct.display_name && (
+                  <div style={{ fontSize: '11px', color: '#3B6D11', marginTop: '2px' }}>
+                    Sends as: {acct.display_name} &lt;{acct.email}&gt;
+                  </div>
+                )}
+              </div>
+
+              <span style={{
+                ...s.pill,
+                ...(acct.status === 'active' ? s.pillOk : acct.status === 'paused' ? s.pillPaused : s.pillWarn)
+              }}>
+                {acct.status}
+              </span>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {acct.status === 'active'
+                  ? <button style={s.actionBtnPause} onClick={() => handlePause(acct.id)}>Pause</button>
+                  : <button style={s.actionBtnResume} onClick={() => handleResume(acct.id)}>Resume</button>
+                }
+                <button style={s.actionBtn} onClick={() => handleReset(acct.id)}>Reset count</button>
+                <button style={s.actionBtnDanger} onClick={() => handleDelete(acct.id, acct.email)}>Remove</button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

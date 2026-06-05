@@ -23,6 +23,9 @@ app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/queue', require('./routes/queue'));
 app.use('/api/templates', require('./routes/templates'));
+app.use('/api/tracking', require('./routes/tracking'));
+app.use('/api/blacklist', require('./routes/blacklist'));
+app.use('/api/followups', require('./routes/followups'));
 
 // Start scheduler
 require('./scheduler');
